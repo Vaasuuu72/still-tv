@@ -5,3 +5,5 @@ dependencyResolutionManagement {
 }
 rootProject.name = "StillTV"
 include(":app")
+// Emulator-only fixture apps; never deployed to the TV.
+include(":testapps")
