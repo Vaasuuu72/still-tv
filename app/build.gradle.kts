@@ -27,4 +27,8 @@ android {
     lint { abortOnError = true }
 }
 if (preview) base { archivesName.set("still-tv-preview") }
-dependencies { testImplementation("junit:junit:4.13.2") }
+dependencies {
+    testImplementation("junit:junit:4.13.2")
+    // The Android stub jar's org.json throws in JVM tests; the real implementation runs the codec tests.
+    testImplementation("org.json:json:20240303")
+}
