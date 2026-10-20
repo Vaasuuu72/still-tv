@@ -1,0 +1,11 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="4dp" android:orientation="horizontal"
+    android:gravity="center_vertical" android:paddingStart="20dp" android:paddingEnd="20dp" android:background="@drawable/menu_row"
+    android:focusable="true" android:clickable="true">
+    <TextView android:id="@+id/pref_label" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+        android:duplicateParentState="true" android:textSize="@dimen/text_body" android:textColor="@color/on_focus_text"
+        android:maxLines="1" android:ellipsize="end" />
+    <TextView android:id="@+id/pref_value" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:duplicateParentState="true" android:textSize="@dimen/text_body" android:textColor="@color/on_focus_secondary"
+        android:maxLines="1" />
+</LinearLayout>

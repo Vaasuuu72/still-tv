@@ -1,13 +1,11 @@
 package tv.still.launcher
 
 import android.app.Activity
-import android.app.Dialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.media.tv.TvContract
-import android.media.tv.TvInputManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -16,41 +14,52 @@ import android.provider.Settings
 import android.text.format.DateFormat
 import android.view.KeyEvent
 import android.view.View
-import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
-import tv.still.launcher.FocusMap.Direction
-import tv.still.launcher.FocusMap.Pos
+import tv.still.launcher.HomeItem.Folder
 import java.util.Date
+import java.util.Locale
 import java.util.concurrent.Executors
 
-class MainActivity : Activity() {
+/** Still TV Home. Owns lifecycle, app discovery, the Home list and key routing; views live in [HomeScene]
+ * and the overlays. Offline: no network, services or polling; the only periodic work is the minute tick. */
+class MainActivity : Activity(), Launcher, HomeHost {
     private lateinit var repository: AppRepository
-    private lateinit var geometry: HomeLayout
-    private lateinit var scroll: CalmScrollView
-    private lateinit var dock: LinearLayout
-    private lateinit var grid: LinearLayout
-    private lateinit var headerItems: List<View>
+    private lateinit var store: HomeStore
+    private lateinit var appearanceStore: Appearance.Store
+    private lateinit var scene: HomeScene
+    private lateinit var overlays: OverlayHost
+    override lateinit var geometry: HomeLayout
+    override var appearance = Appearance(); private set
     private val worker = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
     private val press = HoldGesture()
+    /** After a hold opened a menu, the rest of that OK press (repeats and release) is swallowed. */
+    private var swallowSelect = false
+    private var pressedTile: View? = null
+    private var holdAction: (() -> Unit)? = null
+    private val holdRunnable = Runnable {
+        if (press.hold()) { swallowSelect = true; releasePress(); holdAction?.invoke() }
+    }
     private var apps = emptyList<AppEntry>()
-    private var favourites = emptyList<AppEntry>()
-    private val sectionViews = List(3) { mutableListOf<View>() }
-    private val remembered = intArrayOf(-1, -1, -1)
-    private var selected = ""
+    private var byId = emptyMap<String, AppEntry>()
+    private var full = emptyList<HomeItem>()
+    private var visible = emptyList<HomeItem>()
+    private var rendered: List<Any>? = null
+    /** Bumped when artwork is evicted, so the next render re-binds tiles. */
+    private var artworkEpoch = 0
+    private var moving: MoveSession? = null
     private var generation = 0
-    private var loaded = false
-    private var rebuilding = false
     private var active = false
-    private var animations = true
-    private var dialog: Dialog? = null
-    private var holdTarget: AppEntry? = null
-    private val holdToManage = Runnable { if (press.hold()) holdTarget?.let { manage(it) } }
+    private var systemAnimations = true
+    override val animate get() = systemAnimations && !appearance.reduceMotion
+    override val overlaysOpen get() = overlays.isOpen
+    override val movingKey get() = moving?.key
     private val changes = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action in listOf(Intent.ACTION_TIME_TICK, Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED)) updateClock()
-            else { repository.artworks.evictAll(); refresh() }
+            if (intent.action in TIME_ACTIONS) { updateClock(); return }
+            // Only the changed package's artwork (and folders previewing it) is redrawn.
+            intent.data?.schemeSpecificPart?.let { repository.evict(it); artworkEpoch++ }
+            refresh()
         }
     }
 
@@ -59,282 +68,407 @@ class MainActivity : Activity() {
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         setContentView(R.layout.activity_main)
-        if (Build.VERSION.SDK_INT >= 28) findViewById<View>(R.id.title).isAccessibilityHeading = true
+        val preferences = getSharedPreferences(PREFERENCES, MODE_PRIVATE)
         repository = AppRepository(applicationContext)
-        geometry = HomeLayout.compute(resources.configuration.screenWidthDp, resources.configuration.screenHeightDp)
-        scroll = findViewById(R.id.scroll)
-        dock = findViewById(R.id.dock)
-        grid = findViewById(R.id.grid)
-        val side = dp(geometry.sideMarginDp)
-        findViewById<View>(R.id.header).apply { setPadding(side, dp(geometry.topMarginDp) - dp(8f), side, 0) }
-        findViewById<View>(R.id.content).apply { setPadding(side, paddingTop, side, paddingBottom) }
-        headerItems = listOf(findViewById(R.id.inputs), findViewById(R.id.settings))
-        headerItems.forEachIndexed { index, view ->
-            view.tag = Pos(HEADER, index)
-            view.setTag(R.id.app_key, if (index == 0) KEY_INPUTS else KEY_SETTINGS)
-            view.setOnFocusChangeListener { v, has -> if (has) remember(v) }
-        }
-        sectionViews[HEADER].addAll(headerItems)
-        findViewById<View>(R.id.settings).setOnClickListener { open(Intent(Settings.ACTION_SETTINGS)) }
-        findViewById<View>(R.id.inputs).setOnClickListener { inputs() }
-        selected = state?.getString(STATE_SELECTED) ?: getPreferences(MODE_PRIVATE).getString(STATE_SELECTED, "").orEmpty()
-        findViewById<TextView>(R.id.hint).setText(R.string.loading)
+        store = HomeStore(preferences, AppRepository.DEFAULT_ORDER)
+        appearanceStore = Appearance.Store(preferences)
+        appearance = appearanceStore.load()
+        scene = HomeScene(findViewById(R.id.root), layoutInflater, this)
+        overlays = OverlayHost(findViewById(R.id.overlays), scene.scroll, { animate }, { scene.restoreFocus() })
+        scene.searchButton.setOnClickListener { openSearch() }
+        scene.controlsButton.setOnClickListener { openControls() }
+        applyGeometry()
+        scene.selected = state?.getString(STATE_SELECTED) ?: selectionPreferences().getString(STATE_SELECTED, "").orEmpty()
+        scene.showStatus(getString(R.string.loading))
     }
 
     override fun onStart() {
         super.onStart(); active = true
         val packages = IntentFilter().apply {
-            addAction(Intent.ACTION_PACKAGE_ADDED); addAction(Intent.ACTION_PACKAGE_REMOVED); addAction(Intent.ACTION_PACKAGE_CHANGED); addAction(Intent.ACTION_PACKAGE_REPLACED); addDataScheme("package")
+            addAction(Intent.ACTION_PACKAGE_ADDED); addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_CHANGED); addAction(Intent.ACTION_PACKAGE_REPLACED); addDataScheme("package")
         }
-        val time = IntentFilter().apply { addAction(Intent.ACTION_TIME_TICK); addAction(Intent.ACTION_TIME_CHANGED); addAction(Intent.ACTION_TIMEZONE_CHANGED) }
+        val time = IntentFilter().apply { TIME_ACTIONS.forEach(::addAction) }
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(changes, packages, RECEIVER_EXPORTED)
             registerReceiver(changes, time, RECEIVER_EXPORTED)
         } else {
-            @Suppress("DEPRECATION") registerReceiver(changes, packages)
-            @Suppress("DEPRECATION") registerReceiver(changes, time)
+            @Suppress("DEPRECATION", "UnspecifiedRegisterReceiverFlag") registerReceiver(changes, packages)
+            @Suppress("DEPRECATION", "UnspecifiedRegisterReceiverFlag") registerReceiver(changes, time)
         }
         refresh()
     }
+
     override fun onResume() {
         super.onResume()
-        animations = Settings.Global.getFloat(contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
-        scroll.animateScroll = animations
+        val systemNow = Settings.Global.getFloat(contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+        if (systemNow != systemAnimations) { systemAnimations = systemNow; scene.scroll.animateScroll = animate }
         updateClock()
     }
+
     override fun onPause() {
-        getPreferences(MODE_PRIVATE).edit().putString(STATE_SELECTED, selected).apply()
+        selectionPreferences().edit().putString(STATE_SELECTED, scene.selected).apply()
         super.onPause()
     }
+
     override fun onStop() {
-        handler.removeCallbacks(holdToManage); press.cancel()
+        cancelPress()
+        if (moving != null) finishMoving(commit = false)
+        overlays.find(FolderOverlay::class.java)?.cancelMoving()
+        // An open folder survives an app launch from it; menus, search and panels do not.
+        val folder = overlays.find(FolderOverlay::class.java)
+        if (folder != null) overlays.top?.takeIf { it !== folder }?.let { closeAbove(folder) } else if (overlays.isOpen) overlays.closeAll()
         active = false; generation++
         unregisterReceiver(changes)
-        dialog?.dismiss(); dialog = null
         super.onStop()
     }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus) cancelPress() // a release delivered elsewhere must not leave the next OK swallowed
+    }
+
     override fun onDestroy() { worker.shutdownNow(); repository.artworks.evictAll(); super.onDestroy() }
+
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         @Suppress("DEPRECATION")
         if (level >= TRIM_MEMORY_RUNNING_LOW) repository.artworks.evictAll()
     }
-    override fun onSaveInstanceState(outState: Bundle) { outState.putString(STATE_SELECTED, selected); super.onSaveInstanceState(outState) }
 
-    /** Home pressed while already on Still TV returns to the first favourite; returning from an app keeps the selection. */
+    override fun onSaveInstanceState(outState: Bundle) { outState.putString(STATE_SELECTED, scene.selected); super.onSaveInstanceState(outState) }
+
+    /** Home pressed while already on Still TV resets to the first tile; returning from an app keeps the selection. */
     override fun onNewIntent(intent: Intent) {
         val alreadyHome = hasWindowFocus()
         super.onNewIntent(intent); setIntent(intent)
         if (intent.hasCategory(Intent.CATEGORY_HOME) && alreadyHome) {
-            dialog?.dismiss()
-            first()?.let { scroll.scrollTo(0, 0); it.requestFocus() }
+            cancelPress()
+            if (moving != null) finishMoving(commit = false)
+            if (overlays.isOpen) overlays.closeAll()
+            scene.reset()
         }
     }
 
-    /** Back never leaves the launcher: it walks focus back to the first card. */
+    /** Back on Home never leaves the launcher: it returns to the first tile. */
     @Deprecated("Home deliberately retains its task")
     override fun onBackPressed() {
-        val target = first() ?: return
-        if (currentFocus != target) { scroll.smoothScrollTo(0, 0); target.requestFocus() }
+        if (!scene.isFirst(currentFocus)) scene.reset()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        val pos = currentFocus?.tag as? Pos ?: return super.dispatchKeyEvent(event)
+        if (swallowSelect && isSelect(event.keyCode)) {
+            if (event.action == KeyEvent.ACTION_UP) { swallowSelect = false; press.up() }
+            return true
+        }
+        overlays.top?.let { top ->
+            if (top.onKey(event)) return true
+            if (event.keyCode == KeyEvent.KEYCODE_BACK) {
+                if (event.action == KeyEvent.ACTION_UP && !event.isCanceled) top.onBack()
+                return true
+            }
+            return super.dispatchKeyEvent(event)
+        }
+        moving?.let { session -> if (movingKey(event, session)) return true; return super.dispatchKeyEvent(event) }
+        return homeKey(event) || super.dispatchKeyEvent(event)
+    }
+
+    private fun homeKey(event: KeyEvent): Boolean {
         direction(event.keyCode)?.let { dir ->
-            if (event.action == KeyEvent.ACTION_DOWN) move(pos, dir)
+            if (event.action == KeyEvent.ACTION_DOWN) scene.move(dir, isRtl())
             return true
         }
-        if (pos.section != HEADER && isSelect(event.keyCode)) return select(event, pos)
-        if (pos.section != HEADER && event.keyCode == KeyEvent.KEYCODE_MENU) {
-            if (event.action == KeyEvent.ACTION_UP) appAt(pos)?.let { manage(it) }
+        val focus = currentFocus ?: return false
+        val key = focus.getTag(R.id.app_key) as? String ?: return false
+        if (scene.grid.indexOf(focus) < 0) return false // header controls use their click listeners
+        if (isSelect(event.keyCode)) return handleSelect(event, focus, { onActivate(key, focus) }, { showItemMenu(key, focus, null) })
+        if (event.keyCode == KeyEvent.KEYCODE_MENU) {
+            if (event.action == KeyEvent.ACTION_UP) showItemMenu(key, focus, null)
             return true
         }
-        return super.dispatchKeyEvent(event)
+        return false
     }
 
-    private fun move(pos: Pos, dir: Direction) {
-        val map = FocusMap(listOf(
-            FocusMap.Section(sectionViews[HEADER].size, sectionViews[HEADER].size),
-            FocusMap.Section(sectionViews[DOCK].size, geometry.dockColumns),
-            FocusMap.Section(sectionViews[GRID].size, geometry.gridColumns)))
-        var target = map.move(pos, dir)
-        if (target.section != pos.section) target = map.move(pos, dir, remembered[target.section])
-        sectionViews.getOrNull(target.section)?.getOrNull(target.index)?.requestFocus()
-    }
+    // --- OK press / hold (UI-03, UI-04) ---
 
-    /** OK/Enter on a card: release before [HoldGesture.HOLD_MS] opens the app, holding opens the menu. */
-    private fun select(event: KeyEvent, pos: Pos): Boolean {
-        val app = appAt(pos) ?: return true
+    override fun handleSelect(event: KeyEvent, tile: View, onClick: () -> Unit, onHold: () -> Unit): Boolean {
         when (event.action) {
             KeyEvent.ACTION_DOWN -> if (press.down(event.repeatCount)) {
-                holdTarget = app
-                handler.postDelayed(holdToManage, HoldGesture.HOLD_MS)
+                pressedTile = tile; holdAction = onHold
+                Tiles.press(tile, animate)
+                handler.postDelayed(holdRunnable, HoldGesture.HOLD_MS)
             }
             KeyEvent.ACTION_UP -> {
-                handler.removeCallbacks(holdToManage)
-                if (press.up() == HoldGesture.Release.CLICK) launch(app)
+                handler.removeCallbacks(holdRunnable)
+                releasePress()
+                if (press.up() == HoldGesture.Release.CLICK) onClick()
             }
         }
         return true
     }
 
+    private fun releasePress() {
+        pressedTile?.let { if (it.isFocused || overlays.isOpen) Tiles.setState(it, Tiles.State.FOCUSED, animate) }
+        pressedTile = null
+    }
+
+    private fun cancelPress() { handler.removeCallbacks(holdRunnable); press.cancel(); releasePress(); swallowSelect = false }
+
+    // --- Discovery and rendering ---
+
+    /** Discovery runs on the worker; the Home list is read on the main thread, where every save also happens,
+     * so a slow discovery can never overwrite an edit made meanwhile. */
     private fun refresh() {
         val request = ++generation
         worker.execute {
             val result = runCatching { repository.discover() }
             runOnUiThread {
                 if (!active || isDestroyed || request != generation) return@runOnUiThread
-                result.onSuccess { next ->
-                    val changed = !loaded || apps.map { it.id to it.component } != next.map { it.id to it.component } || apps.map { it.label } != next.map { it.label }
-                    apps = next; repository.initialise(apps)
-                    if (changed) render()
-                    loaded = true
+                result.onSuccess { found ->
+                    apps = found; byId = found.associateBy { it.id }
+                    full = store.load(found.map { it.id })
+                    if (moving != null && HomeModel.visible(full, byId.keys).map { it.key }.toSet() != moving?.original?.toSet()) {
+                        finishMoving(commit = false) // the app list changed mid-edit: discard rather than risk a corrupt order
+                    }
+                    scene.showStatus(null)
+                    renderHome()
+                    overlays.find(FolderOverlay::class.java)?.refresh()
                 }.onFailure {
-                    if (!loaded) render()
-                    findViewById<TextView>(R.id.hint).setText(R.string.load_error)
+                    if (rendered == null) renderHome(force = true)
+                    scene.showStatus(getString(R.string.load_error))
                 }
             }
         }
     }
 
-    private fun render() {
-        val byId = apps.associateBy { it.id }
-        val favouriteIds = FavouriteOrder.visible(repository.favourites(), byId.keys)
-        favourites = favouriteIds.mapNotNull { byId[it] }
-        val rest = FavouriteOrder.rest(apps.map { it.id }, favouriteIds).mapNotNull { byId[it] }
-        // Removing the focused card makes the window focus a pill; that must not overwrite the selection.
-        rebuilding = true
-        try {
-            build(dock, favourites, geometry.dockColumns, geometry.dockGapDp, geometry.dockCardWidthDp, geometry.dockCardHeightDp, DOCK)
-            build(grid, rest, geometry.gridColumns, geometry.gridGapDp, geometry.gridCardWidthDp, geometry.gridCardHeightDp, GRID)
-        } finally { rebuilding = false }
-        findViewById<View>(R.id.caption).visibility = if (rest.isEmpty() && favourites.isNotEmpty()) View.GONE else View.VISIBLE
-        findViewById<TextView>(R.id.hint).setText(when {
-            apps.isEmpty() -> R.string.no_apps
-            favourites.isEmpty() -> R.string.hint_no_favourites
-            else -> R.string.hint
-        })
-        restoreFocus()
+    private fun renderHome(focus: String? = null, force: Boolean = false) {
+        visible = HomeModel.visible(full, byId.keys)
+        val signature = listOf(visible, visible.map { appLabel(it.key) }, geometry, moving?.keys ?: emptyList<String>(), artworkEpoch)
+        if (focus != null) scene.selected = focus
+        if (!force && signature == rendered && focus == null) return
+        rendered = signature
+        scene.render(moving?.keys ?: visible.map { it.key }, focus)
+        scene.showStatus(if (apps.isEmpty()) getString(R.string.no_apps) else null)
     }
 
-    private fun build(container: LinearLayout, entries: List<AppEntry>, columns: Int, gapDp: Float, widthDp: Float, heightDp: Float, section: Int) {
-        container.removeAllViews()
-        sectionViews[section].clear()
-        val width = dp(widthDp); val height = dp(heightDp)
+    private fun applyGeometry() {
+        val c = resources.configuration
+        geometry = HomeLayout.compute(c.screenWidthDp, c.screenHeightDp, appearance.largeIcons, appearance.topShelf)
+        scene.applyLayout(geometry, appearance)
+        val m = resources.displayMetrics
+        val side = px(geometry.sideMarginDp); val top = px(geometry.topMarginDp)
+        overlays.safe.set(side, top, m.widthPixels - side, m.heightPixels - top)
+    }
+
+    override fun bindTile(tile: View, key: String) {
+        val width = px(geometry.tileWidthDp); val height = px(geometry.tileHeightDp)
         val radius = HomeLayout.CORNER_DP * resources.displayMetrics.density
-        entries.chunked(columns).forEachIndexed { rowIndex, rowEntries ->
-            val row = Tiles.row(container)
-            rowEntries.forEachIndexed { col, app ->
-                val tile = Tiles.create(layoutInflater, row, app, width, height)
-                val index = rowIndex * columns + col
-                tile.tag = Pos(section, index)
-                tile.setOnFocusChangeListener { v, has -> Tiles.focus(v, has, animations && v.isLaidOut); if (has) remember(v) }
-                row.addView(tile, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                    .apply { if (col < columns - 1) marginEnd = dp(gapDp) })
-                sectionViews[section].add(tile)
-                loadArtwork(tile, app, width, height, radius)
-            }
-            container.addView(row, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                .apply { bottomMargin = dp(ROW_GAP_DP) })
+        // A re-render of the same key keeps its current bitmap until a newer one (e.g. a changed folder) arrives.
+        val keep = tile.getTag(R.id.app_key) == key
+        if (key.startsWith(HomeItem.FOLDER_PREFIX)) {
+            val folder = visibleFolder(key.removePrefix(HomeItem.FOLDER_PREFIX)) ?: return
+            val name = folderName(folder)
+            val cached = repository.cachedFolderArtwork(folder, byId, width, height)
+            Tiles.bind(tile, key, name, resources.getQuantityString(R.plurals.folder_description, folder.apps.size, name, folder.apps.size), cached, keep)
+            if (cached == null) loadArtwork(tile, key, isFolder = true) { repository.folderArtwork(folder, byId, width, height, radius) }
+            return
         }
+        val app = byId[key] ?: return
+        val cached = repository.cachedArtwork(key, width, height)
+        Tiles.bind(tile, key, app.label, getString(R.string.tile_hint, app.label), cached, keep)
+        if (cached == null) loadArtwork(tile, key, isFolder = false) { repository.artwork(app, width, height, radius) }
     }
 
-    private fun loadArtwork(tile: View, app: AppEntry, width: Int, height: Int, radius: Float) {
-        repository.artworks.get("${app.id}@${width}x$height")?.let { Tiles.bind(tile, it); return }
-        Tiles.placeholder(tile, null)
-        val request = generation
+    private fun loadArtwork(tile: View, key: String, isFolder: Boolean, load: () -> Artwork) {
         worker.execute {
-            val artwork = runCatching { repository.artwork(app, width, height, radius) }.getOrNull() ?: return@execute
-            runOnUiThread { if (!isDestroyed && request == generation && tile.getTag(R.id.app_key) == app.id) Tiles.bind(tile, artwork) }
+            val artwork = runCatching(load).getOrNull() ?: return@execute
+            runOnUiThread {
+                if (isDestroyed || tile.getTag(R.id.app_key) != key) return@runOnUiThread
+                Tiles.bindArtwork(tile, artwork, isFolder)
+                scene.onArtwork(key)
+            }
         }
     }
 
-    private fun remember(view: View) {
-        // The window focuses the first pill before any card exists; that is not a user choice.
-        if (rebuilding || (!loaded && (view.tag as? Pos)?.section == HEADER)) return
-        val pos = view.tag as? Pos ?: return
-        remembered[pos.section] = pos.index
-        selected = view.getTag(R.id.app_key) as? String ?: selected
+    override fun hero(key: String): Hero? {
+        moving?.let { return Hero(getString(R.string.moving_title, appLabel(it.key)), getString(R.string.moving_hint), null) }
+        if (key.startsWith(HomeItem.FOLDER_PREFIX)) {
+            val folder = visibleFolder(key.removePrefix(HomeItem.FOLDER_PREFIX)) ?: return null
+            return Hero(folderName(folder), resources.getQuantityString(R.plurals.hero_folder_hint, folder.apps.size, folder.apps.size), null)
+        }
+        val app = byId[key] ?: return null
+        val tint = repository.cachedArtwork(key, px(geometry.tileWidthDp), px(geometry.tileHeightDp))?.tint
+        return Hero(app.label, getString(R.string.hero_hint), tint)
     }
 
-    private fun restoreFocus() {
-        val target = sectionViews.flatten().firstOrNull { it.getTag(R.id.app_key) == selected } ?: first() ?: headerItems.last()
-        if (!target.hasFocus()) target.requestFocus()
-        else if ((target.tag as? Pos)?.section != HEADER) Tiles.focus(target, true, false)
+    // --- Actions ---
+
+    override fun onActivate(key: String, tile: View) {
+        if (moving != null) return
+        if (key.startsWith(HomeItem.FOLDER_PREFIX)) openFolder(key.removePrefix(HomeItem.FOLDER_PREFIX)) else launch(key)
     }
 
-    private fun first(): View? = sectionViews[DOCK].firstOrNull() ?: sectionViews[GRID].firstOrNull()
-    private fun appAt(pos: Pos): AppEntry? = (sectionViews.getOrNull(pos.section)?.getOrNull(pos.index)?.getTag(R.id.app_key) as? String)
-        ?.let { id -> apps.firstOrNull { it.id == id } }
+    override fun onOptions(key: String, tile: View) { if (moving == null) showItemMenu(key, tile, null) }
 
-    private fun updateClock() { findViewById<TextView>(R.id.clock).text = DateFormat.getTimeFormat(this).format(Date()) }
+    override fun launch(appId: String) {
+        val app = byId[appId] ?: return refresh()
+        if (!open(Intent.makeMainActivity(app.component))) refresh()
+    }
 
-    private fun launch(app: AppEntry) { if (!open(Intent.makeMainActivity(app.component))) refresh() }
     private fun open(intent: Intent): Boolean = try { startActivity(intent); true } catch (_: RuntimeException) {
         Toast.makeText(this, R.string.unavailable, Toast.LENGTH_LONG).show(); false
     }
 
-    private fun manage(app: AppEntry) {
-        val saved = repository.favourites()
-        val visible = FavouriteOrder.visible(saved, apps.map { it.id }.toSet())
-        val index = visible.indexOf(app.id)
-        val items = mutableListOf(MenuPanel.Item(getString(R.string.open)) { launch(app) })
-        if (index >= 0) {
-            items += MenuPanel.Item(getString(R.string.remove_favourite)) { updateFavourites(app, FavouriteOrder.toggle(saved, app.id)) }
-            if (index > 0) items += MenuPanel.Item(getString(R.string.move_left)) { reorder(app, saved, visible, index - 1) }
-            if (index < visible.lastIndex) items += MenuPanel.Item(getString(R.string.move_right)) { reorder(app, saved, visible, index + 1) }
-        } else {
-            items += MenuPanel.Item(getString(R.string.add_favourite)) { updateFavourites(app, FavouriteOrder.toggle(saved, app.id)) }
+    private fun openFolder(folderId: String) {
+        if (visibleFolder(folderId) != null) overlays.show(FolderOverlay(this, folderId))
+    }
+
+    private fun openSearch() = overlays.show(SearchOverlay(this))
+
+    private fun openControls() {
+        val now = Date()
+        val date = DateFormat.format(DateFormat.getBestDateTimePattern(Locale.getDefault(), "EEEEdMMMM"), now).toString()
+        overlays.show(MenuOverlay(DateFormat.getTimeFormat(this).format(now), listOf(
+            MenuOverlay.Item(getString(R.string.search)) { openSearch() },
+            MenuOverlay.Item(getString(R.string.inputs)) { Inputs.show(this, overlays, ::open) },
+            MenuOverlay.Item(getString(R.string.settings)) { openSystemSettings() },
+            MenuOverlay.Item(getString(R.string.preferences)) { overlays.show(PreferencesOverlay(this)) },
+        ), message = date, anchor = scene.controlsButton, placement = MenuOverlay.Placement.TOP_END))
+    }
+
+    override fun openSystemSettings() { open(Intent(Settings.ACTION_SETTINGS)) }
+
+    override fun showItemMenu(key: String, anchor: View, folderId: String?) {
+        val items = ItemMenus(this, full, byId.keys, folderId).build(key, object : ItemMenus.Actions {
+            override fun edit() {
+                if (folderId == null) startMoving(key) else overlays.find(FolderOverlay::class.java)?.startMoving(key)
+            }
+            override fun newFolder() { createFolder(key, folderId) }
+            override fun moveToFolder(target: String) { moveIntoFolder(key, target, folderId) }
+            override fun moveToHome() { update(HomeModel.moveToHome(full, key), focus = key) }
+            override fun rename(folder: Folder) { this@MainActivity.rename(folder) }
+            override fun ungroup(folder: Folder) { confirmUngroup(folder) }
+            override fun appInfo() { open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$key"))) }
+            override fun chooseFolder(folders: List<Folder>) = overlays.show(MenuOverlay(getString(R.string.move_to_folder),
+                folders.map { f -> MenuOverlay.Item(folderName(f)) { moveIntoFolder(key, f.id, folderId) } } +
+                    MenuOverlay.Item(getString(R.string.new_folder)) { createFolder(key, folderId) } +
+                    MenuOverlay.Item(getString(R.string.cancel)) {}, anchor = anchor))
+        })
+        val title = if (key.startsWith(HomeItem.FOLDER_PREFIX)) visibleFolder(key.removePrefix(HomeItem.FOLDER_PREFIX))?.let(::folderName) else appLabel(key)
+        overlays.show(MenuOverlay(title.orEmpty(), items, anchor = anchor))
+    }
+
+    private fun createFolder(appId: String, fromFolder: String?) {
+        fromFolder?.let { id -> overlays.find(FolderOverlay::class.java)?.takeIf { it.folderId == id }?.let { overlays.close(it, restoreFocus = false) } }
+        val id = HomeModel.newFolderId(full)
+        val name = getString(R.string.default_folder_name)
+        update(HomeModel.createFolder(full, appId, id, name), focus = HomeItem.FOLDER_PREFIX + id)
+        overlays.show(RenameOverlay(name) { update(HomeModel.rename(full, id, it), focus = HomeItem.FOLDER_PREFIX + id) })
+    }
+
+    private fun moveIntoFolder(appId: String, target: String, fromFolder: String?) {
+        fromFolder?.let { id -> overlays.find(FolderOverlay::class.java)?.takeIf { it.folderId == id }?.let { overlays.close(it, restoreFocus = false) } }
+        update(HomeModel.moveToFolder(full, appId, target), focus = HomeItem.FOLDER_PREFIX + target)
+    }
+
+    private fun rename(folder: Folder) {
+        overlays.show(RenameOverlay(folderName(folder)) { update(HomeModel.rename(full, folder.id, it), focus = folder.key) })
+    }
+
+    private fun confirmUngroup(folder: Folder) {
+        overlays.show(MenuOverlay(getString(R.string.remove_folder), listOf(
+            MenuOverlay.Item(getString(R.string.remove_folder)) { update(HomeModel.ungroup(full, folder.id), focus = folder.apps.firstOrNull()) },
+            MenuOverlay.Item(getString(R.string.cancel)) {}), message = getString(R.string.remove_folder_message)))
+    }
+
+    /** Persists a changed Home list once (never per key press) and re-renders Home and any open folder. */
+    private fun update(next: List<HomeItem>, focus: String?) {
+        if (next != full) { full = next; store.save(full) }
+        renderHome(focus)
+        overlays.find(FolderOverlay::class.java)?.refresh()
+    }
+
+    override fun saveFolderOrder(folderId: String, apps: List<String>) =
+        update(HomeModel.reorderFolder(full, folderId, apps, byId.keys), focus = null)
+
+    // --- Edit Home Screen (UI-05) ---
+
+    private fun startMoving(key: String) {
+        moving = MoveSession(key, visible.map { it.key })
+        renderHome(focus = key, force = true)
+        announce(getString(R.string.moving_title, appLabel(key)))
+    }
+
+    private fun movingKey(event: KeyEvent, session: MoveSession): Boolean {
+        direction(event.keyCode)?.let { dir ->
+            if (event.action == KeyEvent.ACTION_DOWN && session.move(if (isRtl()) TileGrid.mirror(dir) else dir, geometry.columns)) {
+                renderHome(focus = session.key, force = true)
+            }
+            return true
         }
-        items += MenuPanel.Item(getString(R.string.app_info)) { open(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${app.id}"))) }
-        items += MenuPanel.Item(getString(R.string.cancel)) {}
-        dialog?.dismiss()
-        dialog = MenuPanel.show(this, app.label, items)
+        if (isSelect(event.keyCode)) { if (event.action == KeyEvent.ACTION_UP) finishMoving(commit = true); return true }
+        if (event.keyCode == KeyEvent.KEYCODE_BACK) { if (event.action == KeyEvent.ACTION_UP) finishMoving(commit = false); return true }
+        return event.keyCode == KeyEvent.KEYCODE_MENU
     }
 
-    private fun reorder(app: AppEntry, saved: List<String>, visible: List<String>, to: Int) =
-        updateFavourites(app, FavouriteOrder.move(saved, app.id, saved.indexOf(visible[to]) - saved.indexOf(app.id)))
-
-    /** Saves the new order and keeps focus on the same app wherever it now sits. */
-    private fun updateFavourites(app: AppEntry, ids: List<String>) {
-        repository.save(ids)
-        selected = app.id
-        render()
-    }
-
-    private fun inputs() {
-        val manager = getSystemService(TV_INPUT_SERVICE) as? TvInputManager
-        val available = runCatching { manager?.tvInputList.orEmpty().filter { it.isPassthroughInput && (Build.VERSION.SDK_INT < 24 || !it.isHidden(this)) } }
-            .getOrDefault(emptyList()).sortedBy { it.loadLabel(this).toString() }
-        dialog?.dismiss()
-        dialog = if (available.isEmpty()) {
-            MenuPanel.show(this, getString(R.string.inputs), listOf(
-                MenuPanel.Item(getString(R.string.settings)) { open(Intent(Settings.ACTION_SETTINGS)) },
-                MenuPanel.Item(getString(R.string.cancel)) {}), getString(R.string.no_inputs))
-        } else {
-            MenuPanel.show(this, getString(R.string.inputs), available.map { input ->
-                MenuPanel.Item(input.loadLabel(this).toString()) { open(Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(input.id))) }
-            } + MenuPanel.Item(getString(R.string.cancel)) {})
+    private fun finishMoving(commit: Boolean) {
+        val session = moving ?: return
+        moving = null
+        if (commit && session.changed) {
+            val byKey = visible.associateBy { it.key }
+            full = HomeModel.replaceVisible(full, session.keys.mapNotNull { byKey[it] }, byId.keys)
+            store.save(full)
         }
+        renderHome(focus = session.key, force = true)
+        announce(if (commit) getString(R.string.placed, appLabel(session.key)) else getString(R.string.move_cancelled))
     }
 
-    private fun dp(value: Float) = (value * resources.displayMetrics.density + 0.5f).toInt()
+    // --- Launcher (overlay contract) ---
+
+    override fun px(dp: Float) = (dp * resources.displayMetrics.density + 0.5f).toInt()
+    override fun appLabel(id: String) = byId[id]?.label
+        ?: visibleFolder(id.removePrefix(HomeItem.FOLDER_PREFIX))?.let(::folderName) ?: id
+    override fun installedApps() = apps
+    override fun visibleFolder(folderId: String) = HomeModel.folder(visible, folderId)
+    private fun folderName(folder: Folder) = folder.name.ifEmpty { getString(R.string.default_folder_name) }
+
+    override fun setAppearance(value: Appearance) {
+        if (value == appearance) return
+        val relayout = value.largeIcons != appearance.largeIcons || value.topShelf != appearance.topShelf || value.clock != appearance.clock
+        appearance = value
+        appearanceStore.save(value)
+        scene.scroll.animateScroll = animate
+        if (relayout) { applyGeometry(); renderHome() }
+    }
+
+    override fun resetHome() {
+        val items = store.reset(apps.map { it.id })
+        update(items, focus = HomeModel.visible(items, byId.keys).firstOrNull()?.key)
+    }
+
+    override fun voiceSearchAvailable() = packageManager.resolveActivity(Intent(Intent.ACTION_ASSIST), 0) != null
+    override fun startVoiceSearch() { open(Intent(Intent.ACTION_ASSIST)) }
+    override fun announce(text: CharSequence) = scene.scroll.announceForAccessibility(text)
+    override fun versionName(): String = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull().orEmpty()
+
+    private fun closeAbove(overlay: Overlay) {
+        while (overlays.top != null && overlays.top !== overlay) overlays.close(overlays.top!!, restoreFocus = true)
+    }
+
+    private fun updateClock() {
+        if (appearance.clock) scene.clock.text = DateFormat.getTimeFormat(this).format(Date())
+    }
+
+    private fun isRtl() = window.decorView.layoutDirection == View.LAYOUT_DIRECTION_RTL
+
+    /** Explicit name: Activity.getPreferences() would derive it from the application id, which differs in previews.
+     * "MainActivity" is the file production Still TV already uses. */
+    private fun selectionPreferences() = getSharedPreferences(SELECTION_PREFERENCES, MODE_PRIVATE)
 
     private companion object {
-        const val HEADER = 0
-        const val DOCK = 1
-        const val GRID = 2
-        const val ROW_GAP_DP = 6f
-        const val KEY_INPUTS = "@inputs"
-        const val KEY_SETTINGS = "@settings"
+        const val PREFERENCES = "still"
         const val STATE_SELECTED = "selected"
-        fun direction(keyCode: Int) = when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_UP -> Direction.UP
-            KeyEvent.KEYCODE_DPAD_DOWN -> Direction.DOWN
-            KeyEvent.KEYCODE_DPAD_LEFT -> Direction.LEFT
-            KeyEvent.KEYCODE_DPAD_RIGHT -> Direction.RIGHT
-            else -> null
-        }
-        fun isSelect(keyCode: Int) = keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
+        const val SELECTION_PREFERENCES = "MainActivity"
+        val TIME_ACTIONS = listOf(Intent.ACTION_TIME_TICK, Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED)
     }
 }

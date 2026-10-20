@@ -1,4 +1,4 @@
-<!-- Static, drawn once per frame only when something above it changes; no texture, no animation. -->
+<!-- Static canvas; drawn only when something above it changes. No texture, animation or blur. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <gradient android:angle="270" android:startColor="@color/graphite_top" android:endColor="@color/graphite" />
+    <solid android:color="@color/canvas_background" />
 </shape>

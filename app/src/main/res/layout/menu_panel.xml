@@ -1,13 +1,14 @@
+<!-- Compact floating panel: context menu, quick controls, inputs, confirmations. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="vertical"
-    android:minWidth="380dp" android:padding="14dp" android:background="@drawable/panel">
+    android:minWidth="300dp" android:padding="12dp" android:background="@drawable/panel" android:clickable="true" android:focusable="false">
     <TextView android:id="@+id/menu_title" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:paddingStart="16dp" android:paddingEnd="16dp" android:paddingTop="8dp" android:paddingBottom="10dp"
-        android:textSize="20sp" android:textColor="@color/text_primary" android:fontFamily="sans-serif-medium"
-        android:maxLines="1" android:ellipsize="end" />
+        android:paddingStart="@dimen/space_2" android:paddingEnd="@dimen/space_2" android:paddingTop="6dp" android:paddingBottom="2dp"
+        android:textSize="@dimen/text_heading" android:textColor="@color/text_primary" android:fontFamily="sans-serif-medium"
+        android:maxLines="1" android:ellipsize="end" android:maxWidth="380dp" />
     <TextView android:id="@+id/menu_message" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:paddingStart="16dp" android:paddingEnd="16dp" android:paddingBottom="12dp" android:maxWidth="420dp"
-        android:textSize="15sp" android:textColor="@color/text_secondary" android:visibility="gone" />
+        android:paddingStart="@dimen/space_2" android:paddingEnd="@dimen/space_2" android:paddingTop="2dp" android:maxWidth="380dp"
+        android:textSize="@dimen/text_caption" android:textColor="@color/text_secondary" android:visibility="gone" />
     <LinearLayout android:id="@+id/menu_rows" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:orientation="vertical" />
+        android:layout_marginTop="@dimen/space_1" android:orientation="vertical" />
 </LinearLayout>

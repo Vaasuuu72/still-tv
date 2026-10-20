@@ -2,32 +2,58 @@ package tv.still.launcher
 
 import kotlin.math.ceil
 
-/** Home-screen geometry in dp for a given screen, following ten-foot safe-area guidance (5% margins).
- * Cards are 16:9 so Leanback banners fill them without distortion. */
-internal data class HomeLayout(
-    val sideMarginDp: Float, val topMarginDp: Float,
-    val dockColumns: Int, val dockGapDp: Float, val dockCardWidthDp: Float, val dockCardHeightDp: Float,
-    val gridColumns: Int, val gridGapDp: Float, val gridCardWidthDp: Float, val gridCardHeightDp: Float,
+/** Home geometry in dp for a screen, from the 1920×1080 composition in the UI spec (§5.3):
+ * ~5% side and ~6.5% top safe insets, six 5:3 tiles (five in Large mode) filling the safe width,
+ * and a Top Shelf tall enough to leave the top row low on screen with the next row peeking below. */
+data class HomeLayout(
+    val sideMarginDp: Float,
+    val topMarginDp: Float,
+    val columns: Int,
+    val gapDp: Float,
+    val tileWidthDp: Float,
+    val tileHeightDp: Float,
+    /** Distance from one row's tile top to the next row's tile top (tile + focused label + gap). */
+    val rowPitchDp: Float,
+    /** Height of the region above the first row: header controls plus the Top Shelf. */
+    val shelfHeightDp: Float,
+    /** Screen y at which a focused lower row is held while scrolling, leaving the previous row in view. */
+    val rowAnchorDp: Float,
 ) {
     companion object {
-        const val FOCUS_SCALE = 1.06f
-        const val FOCUS_MS = 160L
+        const val FOCUS_SCALE = 1.055f
+        const val PICKED_SCALE = 1.1f
+        const val FOCUS_MS = 150L
+        const val MODAL_MS = 120L
         const val CORNER_DP = 12f
-        private const val DOCK_COLUMNS = 5
-        private const val DOCK_GAP_DP = 24f
-        private const val GRID_GAP_DP = 20f
-        private const val SIX_COLUMN_MIN_WIDTH_DP = 800f
+        const val FOCUS_LIFT_DP = 3f
+        const val HEADER_HEIGHT_DP = 44f
+        const val LABEL_SPACE_DP = 30f
+        const val ROW_GAP_DP = 12f
+        const val DEFAULT_COLUMNS = 6
+        const val LARGE_COLUMNS = 5
+        private const val SIDE_FRACTION = 0.05f
+        private const val TOP_FRACTION = 0.065f
+        private const val DEFAULT_GAP_DP = 18f
+        private const val LARGE_GAP_DP = 22f
+        private const val TILE_ASPECT = 5f / 3f
+        private const val NEXT_ROW_PEEK_DP = 36f
+        private const val MAX_SHELF_FRACTION = 0.52f
+        private const val COMPACT_SHELF_GAP_DP = 20f
+        private const val ANCHOR_PITCH_FRACTION = 0.55f
 
-        fun compute(widthDp: Int, heightDp: Int): HomeLayout {
-            val side = ceil(widthDp * 0.05f)
-            val top = ceil(heightDp * 0.05f)
+        fun compute(widthDp: Int, heightDp: Int, large: Boolean = false, topShelf: Boolean = true): HomeLayout {
+            val side = ceil(widthDp * SIDE_FRACTION)
+            val top = ceil(heightDp * TOP_FRACTION)
             val available = widthDp - 2 * side
-            val gridColumns = if (available >= SIX_COLUMN_MIN_WIDTH_DP) 6 else 5
-            val dockWidth = (available - (DOCK_COLUMNS - 1) * DOCK_GAP_DP) / DOCK_COLUMNS
-            val gridWidth = (available - (gridColumns - 1) * GRID_GAP_DP) / gridColumns
-            return HomeLayout(side, top,
-                DOCK_COLUMNS, DOCK_GAP_DP, dockWidth, dockWidth * 9f / 16f,
-                gridColumns, GRID_GAP_DP, gridWidth, gridWidth * 9f / 16f)
+            val columns = if (large) LARGE_COLUMNS else DEFAULT_COLUMNS
+            val gap = if (large) LARGE_GAP_DP else DEFAULT_GAP_DP
+            val tileWidth = (available - (columns - 1) * gap) / columns
+            val tileHeight = tileWidth / TILE_ASPECT
+            val pitch = tileHeight + LABEL_SPACE_DP + ROW_GAP_DP
+            val compact = top + HEADER_HEIGHT_DP + COMPACT_SHELF_GAP_DP
+            val shelf = if (!topShelf) compact
+                else (heightDp - 2 * pitch - NEXT_ROW_PEEK_DP).coerceIn(compact, heightDp * MAX_SHELF_FRACTION)
+            return HomeLayout(side, top, columns, gap, tileWidth, tileHeight, pitch, shelf, top + pitch * ANCHOR_PITCH_FRACTION)
         }
     }
 }

@@ -1,0 +1,21 @@
+<!-- Open folder (UI-06): darkened Home behind a centred panel with the folder name and its apps.
+     Panel width and columns are set in code to fit the folder inside the safe area. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/surface_scrim"
+    android:clickable="true" android:focusable="false">
+    <LinearLayout android:id="@+id/folder_panel" android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="center" android:orientation="vertical" android:background="@drawable/panel"
+        android:paddingTop="@dimen/space_3" android:clipChildren="false" android:clipToPadding="false">
+        <TextView android:id="@+id/folder_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:gravity="center" android:textSize="@dimen/text_title" android:textColor="@color/text_primary"
+            android:fontFamily="sans-serif-medium" android:maxLines="1" android:ellipsize="end" />
+        <TextView android:id="@+id/folder_hint" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="2dp" android:gravity="center" android:textSize="@dimen/text_caption"
+            android:textColor="@color/text_secondary" />
+        <tv.still.launcher.CalmScrollView android:id="@+id/folder_scroll" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:scrollbars="none" android:overScrollMode="never" android:clipChildren="false" android:clipToPadding="false">
+            <LinearLayout android:id="@+id/folder_grid" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="vertical" android:clipChildren="false" android:clipToPadding="false" />
+        </tv.still.launcher.CalmScrollView>
+    </LinearLayout>
+</FrameLayout>

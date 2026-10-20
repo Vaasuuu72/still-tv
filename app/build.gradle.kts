@@ -12,8 +12,8 @@ android {
         applicationId = if (preview) "tv.still.launcher.preview" else "tv.still.launcher"
         minSdk = 21
         targetSdk = 35
-        versionCode = 2
-        versionName = if (preview) "2.0.0-preview" else "2.0.0"
+        versionCode = 3
+        versionName = if (preview) "2.1.0-preview" else "2.1.0"
         testInstrumentationRunner = "tv.still.launcher.SmokeInstrumentation"
         manifestPlaceholders["appLabel"] = if (preview) "Still TV Preview" else "Still TV"
         manifestPlaceholders["homeCategory"] =

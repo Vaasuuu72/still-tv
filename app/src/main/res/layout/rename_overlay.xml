@@ -1,0 +1,16 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:background="@color/surface_scrim" android:clickable="true" android:focusable="false">
+    <LinearLayout android:layout_width="460dp" android:layout_height="wrap_content" android:layout_gravity="center"
+        android:orientation="vertical" android:padding="20dp" android:background="@drawable/panel">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/rename_folder"
+            android:textSize="@dimen/text_heading" android:textColor="@color/text_primary" android:fontFamily="sans-serif-medium" />
+        <EditText android:id="@+id/rename_field" android:layout_width="match_parent" android:layout_height="52dp"
+            android:layout_marginTop="@dimen/space_2" android:layout_marginBottom="@dimen/space_1" android:background="@drawable/field"
+            android:paddingStart="@dimen/space_2" android:paddingEnd="@dimen/space_2" android:textColor="@color/text_primary"
+            android:textSize="@dimen/text_body" android:inputType="textCapWords|textNoSuggestions" android:imeOptions="actionDone|flagNoExtractUi"
+            android:maxLines="1" android:maxLength="32" android:importantForAutofill="no" android:hint="@string/folder_name_hint"
+            android:textColorHint="@color/text_tertiary" />
+        <LinearLayout android:id="@+id/rename_rows" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </LinearLayout>
+</FrameLayout>

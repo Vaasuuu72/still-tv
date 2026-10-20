@@ -1,3 +1,4 @@
 <resources>
     <item name="app_key" type="id" />
+    <item name="tile_size" type="id" />
 </resources>

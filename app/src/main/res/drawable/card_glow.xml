@@ -1,6 +1,6 @@
-<!-- Focus highlight: a faint brightening of the surface and a restrained light edge. -->
+<!-- Focus highlight: faint brightening and a restrained light edge; corner matches HomeLayout.CORNER_DP. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="#12FFFFFF" />
-    <stroke android:width="2dp" android:color="#D9FFFFFF" />
-    <corners android:radius="12dp" />
+    <solid android:color="@color/focus_surface_glow" />
+    <stroke android:width="2dp" android:color="@color/focus_stroke" />
+    <corners android:radius="@dimen/radius_tile" />
 </shape>

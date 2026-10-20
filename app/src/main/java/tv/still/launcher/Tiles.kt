@@ -1,6 +1,5 @@
 package tv.still.launcher
 
-import android.graphics.Bitmap
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -9,51 +8,87 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 
-/** Builds app cards and runs their focus transition. Only scale and alpha change, so a transition is
- * a few cheap property updates on the focused card and the card it left. */
+/** Builds Home tiles and runs their state transitions. Only scale, translation and alpha change, so a
+ * focus move is a few property updates on two tiles; artwork is never re-bound because focus moved. */
 internal object Tiles {
-    /** Fast start, gentle critically-damped settle; no overshoot. */
+    /** Fast start, gentle settle without overshoot. */
     private val EASE = PathInterpolator(0.2f, 0f, 0f, 1f)
+    private const val PRESSED_SCALE = 1.0f
+    private const val PRESS_MS = 70L
+    private const val DIMMED_ALPHA = 0.5f
 
-    fun create(inflater: LayoutInflater, parent: ViewGroup, app: AppEntry, widthPx: Int, heightPx: Int): View {
+    enum class State { REST, FOCUSED, PICKED }
+
+    fun create(inflater: LayoutInflater, parent: ViewGroup, widthPx: Int, heightPx: Int): View {
         val tile = inflater.inflate(R.layout.tile, parent, false)
         tile.findViewById<View>(R.id.frame).layoutParams.apply { width = widthPx; height = heightPx }
-        tile.findViewById<TextView>(R.id.label).apply { layoutParams.width = widthPx; text = app.label }
-        tile.findViewById<TextView>(R.id.name).text = app.label
-        tile.contentDescription = app.label
-        tile.setTag(R.id.app_key, app.id)
+        tile.findViewById<View>(R.id.label).layoutParams.width = widthPx
+        tile.setTag(R.id.tile_size, widthPx to heightPx)
         return tile
     }
 
-    fun bind(tile: View, artwork: Artwork) {
-        tile.findViewById<ImageView>(R.id.art).setImageBitmap(artwork.bitmap)
-        // Icon-only apps show their name inside the card; banners already carry the app's branding.
-        tile.findViewById<View>(R.id.name).visibility = if (artwork.isBanner) View.GONE else View.VISIBLE
-        tile.findViewById<View>(R.id.label).visibility = if (artwork.isBanner) View.VISIBLE else View.INVISIBLE
+    fun sizeOf(tile: View) = tile.getTag(R.id.tile_size)
+
+    /** Sets the identity of a tile; [artwork] may be null while it loads (the name is shown meanwhile). */
+    fun bind(tile: View, key: String, label: String, description: String, artwork: Artwork?, keepCurrent: Boolean = false) {
+        tile.setTag(R.id.app_key, key)
+        tile.contentDescription = description
+        tile.findViewById<TextView>(R.id.label).text = label
+        tile.findViewById<TextView>(R.id.name).text = label
+        if (artwork != null || !keepCurrent) bindArtwork(tile, artwork, isFolder = key.startsWith(HomeItem.FOLDER_PREFIX))
     }
 
-    fun placeholder(tile: View, bitmap: Bitmap?) {
-        tile.findViewById<ImageView>(R.id.art).setImageBitmap(bitmap)
-        tile.findViewById<View>(R.id.name).visibility = View.VISIBLE
+    fun bindArtwork(tile: View, artwork: Artwork?, isFolder: Boolean) {
+        val art = tile.findViewById<ImageView>(R.id.art)
+        if (art.getTag(R.id.app_key) !== artwork) {
+            art.setImageBitmap(artwork?.bitmap)
+            art.setTag(R.id.app_key, artwork)
+        }
+        // Icon-only apps carry their name inside the card; banners and folders already identify themselves.
+        tile.findViewById<View>(R.id.name).visibility =
+            if (artwork == null || (!artwork.isBanner && !isFolder)) View.VISIBLE else View.GONE
     }
 
-    fun focus(tile: View, focused: Boolean, animate: Boolean) {
-        val frame = tile.findViewById<View>(R.id.frame) ?: return // header pills have no card
-        val scale = if (focused) HomeLayout.FOCUS_SCALE else 1f
-        val lift = if (focused) 1f else 0f
-        val labelShift = if (focused) frame.height * (HomeLayout.FOCUS_SCALE - 1f) / 2f else 0f
-        val parts = listOf(frame, tile.findViewById(R.id.shadow), tile.findViewById(R.id.glow), tile.findViewById<View>(R.id.label))
+    fun setState(tile: View, state: State, animate: Boolean) {
+        val frame = tile.findViewById<View>(R.id.frame) ?: return
+        val density = tile.resources.displayMetrics.density
+        val scale = when (state) { State.REST -> 1f; State.FOCUSED -> HomeLayout.FOCUS_SCALE; State.PICKED -> HomeLayout.PICKED_SCALE }
+        val lifted = state != State.REST
+        val lift = if (lifted) -HomeLayout.FOCUS_LIFT_DP * density else 0f
+        val glow = tile.findViewById<View>(R.id.glow)
+        glow.setBackgroundResource(if (state == State.PICKED) R.drawable.card_picked else R.drawable.card_glow)
+        val label = tile.findViewById<View>(R.id.label)
+        val labelShift = frame.height * (scale - 1f) / 2f + lift
+        val visible = if (lifted) 1f else 0f
+        val shadow = tile.findViewById<View>(R.id.shadow)
+        // An icon-only card names itself inside; when focused the name moves below instead of appearing twice.
+        val name = tile.findViewById<View>(R.id.name)
+        val nameAlpha = 1f - visible
         if (!animate) {
-            parts.forEach { it.animate().cancel() }
-            frame.scaleX = scale; frame.scaleY = scale
-            parts[1].alpha = lift; parts[2].alpha = lift; parts[3].alpha = lift; parts[3].translationY = labelShift
+            listOf(frame, shadow, glow, label, name).forEach { it.animate().cancel() }
+            frame.scaleX = scale; frame.scaleY = scale; frame.translationY = lift
+            shadow.alpha = visible; glow.alpha = visible; label.alpha = visible; label.translationY = labelShift
+            name.alpha = nameAlpha
             return
         }
-        // ViewPropertyAnimator starts from the current on-screen values, so rapid moves retarget smoothly.
-        frame.animate().scaleX(scale).scaleY(scale).setDuration(HomeLayout.FOCUS_MS).setInterpolator(EASE).start()
-        parts[1].animate().alpha(lift).setDuration(HomeLayout.FOCUS_MS).setInterpolator(EASE).start()
-        parts[2].animate().alpha(lift).setDuration(HomeLayout.FOCUS_MS).setInterpolator(EASE).start()
-        parts[3].animate().alpha(lift).translationY(labelShift).setDuration(HomeLayout.FOCUS_MS).setInterpolator(EASE).start()
+        name.animate().alpha(nameAlpha).setDuration(HomeLayout.FOCUS_MS).setInterpolator(EASE).start()
+        // ViewPropertyAnimator starts from current on-screen values, so rapid moves retarget without jumps.
+        frame.animate().scaleX(scale).scaleY(scale).translationY(lift).setDuration(HomeLayout.FOCUS_MS).setInterpolator(EASE).start()
+        shadow.animate().alpha(visible).setDuration(HomeLayout.FOCUS_MS).setInterpolator(EASE).start()
+        glow.animate().alpha(visible).setDuration(HomeLayout.FOCUS_MS).setInterpolator(EASE).start()
+        label.animate().alpha(visible).translationY(labelShift).setDuration(HomeLayout.FOCUS_MS).setInterpolator(EASE).start()
+    }
+
+    /** Brief tactile response on OK down; released by [setState]. Launch is never delayed by it. */
+    fun press(tile: View, animate: Boolean) {
+        val frame = tile.findViewById<View>(R.id.frame) ?: return
+        if (!animate) return
+        frame.animate().scaleX(PRESSED_SCALE).scaleY(PRESSED_SCALE).setDuration(PRESS_MS).setInterpolator(EASE).start()
+    }
+
+    /** Edit mode dims every tile except the one being moved. */
+    fun dim(tile: View, dimmed: Boolean) {
+        tile.findViewById<View>(R.id.frame)?.alpha = if (dimmed) DIMMED_ALPHA else 1f
     }
 
     fun row(parent: ViewGroup): LinearLayout = LinearLayout(parent.context).apply {
