@@ -1,0 +1,7 @@
+Starting: Intent { cmp=tv.still.launcher/.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: tv.still.launcher/.MainActivity
+TotalTime: 651
+WaitTime: 663
+Complete

@@ -1,0 +1,9 @@
+<!-- Precomputed soft shadow: three stacked translucent rounded rects instead of a blur.
+     Only the focused card shows it (alpha animated 0 -> 1); hidden views are not drawn. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item><shape><solid android:color="#14000000" /><corners android:radius="22dp" /></shape></item>
+    <item android:left="3dp" android:right="3dp" android:top="2dp" android:bottom="3dp">
+        <shape><solid android:color="#22000000" /><corners android:radius="19dp" /></shape></item>
+    <item android:left="6dp" android:right="6dp" android:top="4dp" android:bottom="7dp">
+        <shape><solid android:color="#38000000" /><corners android:radius="16dp" /></shape></item>
+</layer-list>

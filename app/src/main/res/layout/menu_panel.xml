@@ -1,0 +1,13 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="vertical"
+    android:minWidth="380dp" android:padding="14dp" android:background="@drawable/panel">
+    <TextView android:id="@+id/menu_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:paddingStart="16dp" android:paddingEnd="16dp" android:paddingTop="8dp" android:paddingBottom="10dp"
+        android:textSize="20sp" android:textColor="@color/text_primary" android:fontFamily="sans-serif-medium"
+        android:maxLines="1" android:ellipsize="end" />
+    <TextView android:id="@+id/menu_message" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:paddingStart="16dp" android:paddingEnd="16dp" android:paddingBottom="12dp" android:maxWidth="420dp"
+        android:textSize="15sp" android:textColor="@color/text_secondary" android:visibility="gone" />
+    <LinearLayout android:id="@+id/menu_rows" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" />
+</LinearLayout>

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Still TV — interactive design preview</title>
+<style>
+:root{color-scheme:dark;--white:#f7f8fd;--mute:#a2aec2;--border:rgba(217,226,244,.13);--panel:rgba(255,255,255,.056)}
+*{box-sizing:border-box}html,body{height:100%;margin:0}body{background:#070b14;color:var(--white);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overflow:auto}
+body:before{content:"";position:fixed;inset:-32%;background:radial-gradient(ellipse 34% 37% at 83% 26%,#23365185,transparent 100%),radial-gradient(ellipse 43% 40% at 10% 84%,#1a26466b,transparent 100%);pointer-events:none}
+body:after{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(150deg,#0d1324a1,#070b12 75%)}
+main{position:relative;z-index:1;max-width:1740px;margin:auto;padding:52px 6.5vw 80px}
+header{display:flex;align-items:center;gap:18px;font-size:16px}.brand{font-size:23px;font-weight:700;letter-spacing:-1.1px}.brand-dot{color:#b0c9f4}.right{margin-left:auto;display:flex;align-items:center;gap:32px;color:#b7c0cf;font-size:15px}.time{color:#fff;font-weight:650}.set{border:1px solid var(--border);background:#ffffff0d;color:#f8f9fd;padding:12px 21px;border-radius:999px;font:inherit;cursor:pointer}.set:focus-visible{outline:2px solid white;outline-offset:4px}
+.hero{margin:92px 0 78px}.eyebrow{font-size:12px;color:#a8b7ce;letter-spacing:2.2px;text-transform:uppercase;font-weight:650;margin-bottom:18px}.hero h1{margin:0;font-size:clamp(42px,5.2vw,72px);letter-spacing:-3.7px;font-weight:520;line-height:1.07}.hero p{margin:19px 0 0;color:#a5b1c4;font-size:21px;letter-spacing:-.36px}
+.section{margin-bottom:65px}.sectionhead{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:25px}.sectionhead h2{font-size:25px;letter-spacing:-.8px;margin:0;font-weight:580}.sectionhead span{color:#8190a8;letter-spacing:1.3px;font-size:12px;font-weight:650}
+.grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:19px}.tile{appearance:none;position:relative;border:1px solid var(--border);border-radius:22px;background:linear-gradient(135deg,#1c2536,#101725);min-height:149px;color:var(--white);display:flex;justify-content:center;align-items:center;cursor:pointer;transform:scale(1);transition:transform .13s ease,box-shadow .13s ease,border-color .13s ease;outline:none;isolation:isolate;box-shadow:0 10px 30px #00000020}.tile:hover,.tile:focus-visible{transform:scale(1.06);z-index:10;border-color:#eaf0ff;box-shadow:0 0 0 2px #eff5ff7b,0 24px 70px #0009}.tile .title{position:absolute;left:9px;right:9px;bottom:12px;text-align:center;font-size:12px;color:#ffffffa5;opacity:0;transition:opacity .13s}.tile:hover .title,.tile:focus-visible .title{opacity:1}.tile .logo{line-height:1;font-weight:700;letter-spacing:-1.4px;text-align:center}.tile.netflix{background:linear-gradient(139deg,#261b26,#120e15)}.tile.netflix .logo{font-size:76px;color:#e50914;letter-spacing:-6px;font-family:Arial,sans-serif;font-weight:900;text-shadow:0 3px 25px #e509144b}.tile.youtube{background:linear-gradient(135deg,#f8f9fa,#dde2e8)}.tile.youtube .logo{font-size:49px;color:#ff0033}.tile.prime{background:linear-gradient(130deg,#15374c,#091d34)}.tile.prime .logo{font-size:31px;font-weight:680;color:#f8fcff}.tile.prime small{display:block;font-size:17px;font-weight:430;color:#28b8ee;letter-spacing:1px;margin-top:5px}.tile.disney{background:linear-gradient(145deg,#172548,#070f27)}.tile.disney .logo{font-size:31px;color:white;letter-spacing:-1.6px}.tile.spotify{background:linear-gradient(145deg,#142c23,#0a1815)}.tile.spotify .logo{font-size:69px;color:#1ed760}.tile.live{background:linear-gradient(145deg,#4b3864,#211f3b)}.tile.live .logo{font-size:25px;letter-spacing:-.4px}.tile.music{background:linear-gradient(150deg,#493a54,#201e39)}.tile.music .logo{font-size:55px;color:#eedce8}.tile.photos{background:linear-gradient(150deg,#28443f,#172f34)}.tile.photos .logo{font-size:54px}.tile.video{background:linear-gradient(150deg,#273c53,#162535)}.tile.video .logo{font-size:24px}.tile.cast{background:linear-gradient(150deg,#434345,#252730)}.tile.cast .logo{font-size:49px}.tile.games{background:linear-gradient(150deg,#404050,#171b2a)}.tile.games .logo{font-size:45px}.tile.files{background:linear-gradient(150deg,#3a414e,#1e2530)}.tile.files .logo{font-size:48px}
+.foot{display:flex;justify-content:space-between;align-items:center;border-top:1px solid #b3c4e116;padding-top:23px;color:#8795ab;font-size:13px}.kbd{display:inline-flex;padding:4px 8px;margin:0 5px 0 0;border:1px solid #a8b8d63d;border-radius:7px;background:#e2e9ff0a;color:#d0dbed;font-size:11px;font-weight:700}.footerRight{font-size:12px;color:#708199}
+.toast{position:fixed;bottom:42px;left:50%;transform:translate(-50%,20px);background:#eaf2ff;color:#111d32;border-radius:18px;padding:14px 22px;font-size:14px;opacity:0;z-index:99;pointer-events:none;transition:.2s}.toast.show{transform:translate(-50%,0);opacity:1}
+@media(max-width:900px){main{padding:28px 5% 55px}.hero{margin:65px 0 55px}.grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.tile{min-height:128px}.foot{flex-wrap:wrap;gap:10px}}
+</style>
+</head>
+<body>
+<main>
+<header><div class="brand">still<span class="brand-dot">.</span></div><div class="right"><span id="date">Sunday, 18 October</span><span class="time" id="time">5:29 PM</span><button class="set" id="settings">Settings&nbsp; ⚙</button></div></header>
+<section class="hero"><div class="eyebrow">WELCOME HOME</div><h1 id="greeting">Good evening.</h1><p>Everything you love. Nothing you don’t.</p></section>
+<section class="section"><div class="sectionhead"><h2>Favourites</h2><span>HOLD SELECT TO EDIT</span></div><div class="grid" id="favorites"></div></section>
+<section class="section"><div class="sectionhead"><h2>All apps</h2><span>YOUR APPS, NO RECOMMENDATIONS</span></div><div class="grid" id="apps"></div></section>
+<div class="foot"><span><span class="kbd">↕ ↔</span> Navigate &nbsp;&nbsp; <span class="kbd">↵</span> Open &nbsp;&nbsp; <span class="kbd">P</span> Pin / unpin</span><span class="footerRight">Privacy by design · No ads · No tracking</span></div>
+</main>
+<div id="toast" class="toast" role="status"></div>
+<script>
+const apps=[
+ {id:'netflix',label:'Netflix',logo:'N',cls:'netflix'},
+ {id:'youtube',label:'YouTube',logo:'▶',cls:'youtube'},
+ {id:'prime',label:'Prime Video',logo:'prime<small>video ↗</small>',cls:'prime'},
+ {id:'disney',label:'Disney+',logo:'Disney+',cls:'disney'},
+ {id:'spotify',label:'Spotify',logo:'◉',cls:'spotify'},
+ {id:'live',label:'Live TV',logo:'LIVE<br>TV',cls:'live'},
+ {id:'music',label:'Music',logo:'♫',cls:'music'},
+ {id:'photos',label:'Photos',logo:'✿',cls:'photos'},
+ {id:'video',label:'Movies',logo:'▣ Films',cls:'video'},
+ {id:'cast',label:'Cast',logo:'▱',cls:'cast'},
+ {id:'games',label:'Games',logo:'✥',cls:'games'},
+ {id:'files',label:'Files',logo:'▤',cls:'files'}
+];
+let pins=['netflix','youtube','prime','disney','spotify','live'];
+function tile(app){const b=document.createElement('button');b.className='tile '+app.cls;b.dataset.id=app.id;b.title=app.label;b.setAttribute('aria-label',app.label);b.innerHTML='<span class="logo">'+app.logo+'</span><span class="title">'+app.label+'</span>';b.addEventListener('click',()=>toast('Design preview — '+app.label+' would open on your TV'));b.addEventListener('contextmenu',e=>{e.preventDefault();pin(app.id)});return b}
+function render(preserve){const f=document.getElementById('favorites'),a=document.getElementById('apps');f.replaceChildren(...pins.map(id=>tile(apps.find(a=>a.id===id))).filter(Boolean));a.replaceChildren(...apps.map(tile));if(preserve){const el=document.querySelector('.tile[data-id="'+preserve+'"]');el?.focus()}}
+function pin(id){const old=pins.includes(id);pins=old?pins.filter(x=>x!==id):[...pins,id];render(id);toast((old?'Removed from':'Added to')+' favourites')}
+let toastTimeout;function toast(message){const t=document.getElementById('toast');t.textContent=message;t.classList.add('show');clearTimeout(toastTimeout);toastTimeout=setTimeout(()=>t.classList.remove('show'),2200)}
+function updateClock(){const d=new Date();document.getElementById('date').textContent=new Intl.DateTimeFormat('en',{weekday:'long',day:'numeric',month:'long'}).format(d);document.getElementById('time').textContent=new Intl.DateTimeFormat('en',{hour:'numeric',minute:'2-digit'}).format(d);const hour=d.getHours();document.getElementById('greeting').textContent=hour<12&&hour>=5?'Good morning.':hour<17&&hour>=12?'Good afternoon.':'Good evening.'}
+updateClock();setInterval(updateClock,30_000);
+document.getElementById('settings').onclick=()=>toast('The TV build opens your device settings.');
+document.addEventListener('keydown',e=>{
+ const active=document.activeElement;
+ if((e.key==='p'||e.key==='P')&&active?.dataset?.id){pin(active.dataset.id);e.preventDefault();return}
+ if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;
+ const elements=[...document.querySelectorAll('button')];if(!elements.length)return;
+ const origin=(active?.matches('button')?active:elements.find(el=>el.classList.contains('tile'))) || elements[0];
+ const o=origin.getBoundingClientRect(),cx=o.x+o.width/2,cy=o.y+o.height/2;
+ const candidates=elements.filter(el=>el!==origin).map(el=>{const r=el.getBoundingClientRect();const dx=r.x+r.width/2-cx,dy=r.y+r.height/2-cy;const horizontal=e.key==='ArrowRight'||e.key==='ArrowLeft';const directional=e.key==='ArrowRight'?dx>5:e.key==='ArrowLeft'?dx< -5:e.key==='ArrowDown'?dy>5:dy< -5;return{el,directional,score:horizontal?Math.abs(dx)+Math.abs(dy)*2.8:Math.abs(dy)+Math.abs(dx)*2.8}}).filter(x=>x.directional).sort((a,b)=>a.score-b.score);
+ if(candidates.length)candidates[0].el.focus();e.preventDefault()
+});
+render();
+</script>
+</body>
+</html>

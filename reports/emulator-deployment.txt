@@ -1,0 +1,18 @@
+Starting: Intent { cmp=com.google.android.tvlauncher/.MainActivity }
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+Status: ok
+LaunchState: UNKNOWN (0)
+Activity: com.google.android.tvlauncher/.MainActivity
+TotalTime: 0
+WaitTime: 24
+Complete
+Performing Streamed Install
+Success
+Starting: Intent { cmp=tv.still.launcher/.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: tv.still.launcher/.MainActivity
+TotalTime: 812
+WaitTime: 814
+Complete
+Still TV opened manually. Original HOME and all packages remain enabled. Complete docs/deployment.md before changing HOME.

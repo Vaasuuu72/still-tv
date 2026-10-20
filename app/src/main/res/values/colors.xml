@@ -1,0 +1,12 @@
+<resources>
+    <!-- Still TV 2.0 palette: graphite surfaces, soft white text, neutral white focus. -->
+    <color name="graphite">#0D0E11</color>
+    <color name="graphite_top">#16181D</color>
+    <color name="charcoal">#1C1F25</color>
+    <color name="text_primary">#F2F4F7</color>
+    <color name="text_secondary">#9AA2AE</color>
+    <color name="text_on_focus">#101215</color>
+    <color name="focus_fill">#F2F4F7</color>
+    <color name="panel">#F21A1D22</color>
+    <color name="panel_edge">#2C3038</color>
+</resources>

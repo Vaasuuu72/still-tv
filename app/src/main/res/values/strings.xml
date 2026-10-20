@@ -1,0 +1,21 @@
+<resources>
+    <string name="brand">S T I L L</string>
+    <string name="brand_description">Still</string>
+    <string name="all_apps">All Apps</string>
+    <string name="settings">Settings</string>
+    <string name="inputs">Inputs</string>
+    <string name="hint">Hold OK to edit Favourites</string>
+    <string name="hint_no_favourites">Hold OK on an app to add it to Favourites</string>
+    <string name="loading">Loading your apps…</string>
+    <string name="load_error">Apps could not be loaded. Open Settings or return here to retry.</string>
+    <string name="no_apps">No apps found. Settings is still available.</string>
+    <string name="open">Open</string>
+    <string name="add_favourite">Add to Favourites</string>
+    <string name="remove_favourite">Remove from Favourites</string>
+    <string name="move_left">Move Left</string>
+    <string name="move_right">Move Right</string>
+    <string name="app_info">App Info</string>
+    <string name="cancel">Cancel</string>
+    <string name="no_inputs">This TV does not offer its HDMI inputs to Still TV. Use the remote\'s Input or Source button, or open Settings.</string>
+    <string name="unavailable">This action is unavailable on this TV.</string>
+</resources>

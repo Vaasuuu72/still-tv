@@ -1,0 +1,29 @@
+recorded: 2026-10-18 23:28:30
+    codePath=/data/app/tv.still.launcher-ODYHUhSxf7n-LaU-vMB3vQ==
+    versionCode=1 minSdk=21 targetSdk=35
+    versionName=0.1.0
+    firstInstallTime=2026-10-18 20:33:39
+    lastUpdateTime=2026-10-18 22:37:25
+    User 0: ceDataInode=-4294830869 installed=true hidden=false suspended=false stopped=false notLaunched=false enabled=0 instant=false virtual=false
+installed APK: /data/app/tv.still.launcher-ODYHUhSxf7n-LaU-vMB3vQ==/base.apk
+/data/app/tv.still.launcher-ODYHUhSxf7n-LaU-vMB3vQ==/base.apk: 1 file pulled, 0 skipped. 1.7 MB/s (894182 bytes in 0.501s)
+pulled backup OK
+ed03a82a03d655a31b341d21f7da2694072ab2862150e1913f1876c5c1648245  /Users/vasumittal/projects/still-tv/release/1.0-production/still-tv-1.0-installed.apk
+The operation couldn’t be completed. Unable to locate a Java Runtime.
+Please visit http://www.java.com for information on installing Java.
+
+local debug key matches?
+--- fallback state
+HOME: tv.still.launcher/.MainActivity
+    tv.still.launcher/.MainActivity
+    com.android.tv.settings/.system.FallbackHome
+tvlauncher: package:/data/app/com.google.android.tvlauncher-v4
+package:/data/app/com.google.android.tvlauncher-v4
+package:/data/app/com.google.android.tvlauncher-v4 enabled=3 (3 = disabled-user)
+disabled: package:com.sonyliv package:com.google.android.tvlauncher package:com.graymatrix.did 
+--- signer
+Signer #1 certificate DN: C=US, O=Android, CN=Android Debug
+Signer #1 certificate SHA-256 digest: 87781052d3115eda4d96902e1108e99696f4680fe0d51bd3c7341136c6e7d6b4
+--- local debug keystore
+Owner: C=US, O=Android, CN=Android Debug
+	 SHA256: 87:78:10:52:D3:11:5E:DA:4D:96:90:2E:11:08:E9:96:96:F4:68:0F:E0:D5:1B:D3:C7:34:11:36:C6:E7:D6:B4

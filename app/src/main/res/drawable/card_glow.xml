@@ -1,0 +1,6 @@
+<!-- Focus highlight: a faint brightening of the surface and a restrained light edge. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#12FFFFFF" />
+    <stroke android:width="2dp" android:color="#D9FFFFFF" />
+    <corners android:radius="12dp" />
+</shape>
